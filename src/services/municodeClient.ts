@@ -40,10 +40,11 @@ export function formatMunicodeError(error: unknown, context?: string): string {
   if (error instanceof AxiosError) {
     if (error.response) {
       const status = error.response.status;
+      const bodySnippet = safeStringifyErrorBody(error.response.data);
       if (status === 404) {
-        return `Municode API returned 404${where} — the jurisdiction, product, or node ID was not found. Double-check the municipality name matches Municode's library exactly (try the name as it appears in the library.municode.com URL), or that job_id/product_id/node_id came from a prior tool call in this session rather than being guessed.`;
+        return `Municode API returned 404${where} — the jurisdiction, product, or node ID was not found. Double-check the municipality name matches Municode's library exactly (try the name as it appears in the library.municode.com URL), or that job_id/product_id/node_id came from a prior tool call in this session rather than being guessed.${bodySnippet}`;
       }
-      return `Municode API request failed${where} with HTTP ${status}. This is an unofficial API with no uptime guarantee — retry once before treating this as a hard block.`;
+      return `Municode API request failed${where} with HTTP ${status}. This is an unofficial API with no uptime guarantee — retry once before treating this as a hard block.${bodySnippet}`;
     }
     if (error.code === "ECONNABORTED") {
       return `Municode API request timed out${where} after ${REQUEST_TIMEOUT_MS}ms. Retry; if it persists, fall back to the §0B upload-loop workflow for this jurisdiction.`;
@@ -53,6 +54,21 @@ export function formatMunicodeError(error: unknown, context?: string): string {
   return `Unexpected error querying Municode API${where}: ${
     error instanceof Error ? error.message : String(error)
   }`;
+}
+
+// Surfaces whatever body Municode's server sent back on an error response
+// (many APIs include a JSON error detail even on 5xx) so failures carry
+// real diagnostic signal instead of just a status code. Truncated to keep
+// error messages from ballooning.
+function safeStringifyErrorBody(data: unknown): string {
+  if (data === undefined || data === null) return "";
+  try {
+    const str = typeof data === "string" ? data : JSON.stringify(data);
+    const truncated = str.length > 500 ? str.slice(0, 500) + "…" : str;
+    return ` Server response body: ${truncated}`;
+  } catch {
+    return "";
+  }
 }
 
 /** Look up a jurisdiction ("client" in Municode's terminology) by name + state. */
@@ -94,10 +110,25 @@ function normalizeProductsResponse(raw: unknown): MunicodeProduct[] {
   return [];
 }
 
-/** Get the list of code "products" (Code of Ordinances, Zoning Ordinance, etc.) a jurisdiction has. */
-export async function getClientContent(clientId: number): Promise<MunicodeProduct[]> {
+/**
+ * Get the list of code "products" (Code of Ordinances, Zoning Ordinance,
+ * etc.) a jurisdiction has, PLUS the raw response — the raw value lets a
+ * caller inspect what Municode actually sent when the normalized list
+ * comes back empty, rather than treating "empty" as necessarily meaning
+ * "this jurisdiction has nothing" (live-observed to sometimes mean an
+ * unrecognized wrapper shape instead — see server README).
+ */
+export async function getClientContentWithRaw(
+  clientId: number
+): Promise<{ products: MunicodeProduct[]; raw: unknown }> {
   const response = await http.get<unknown>(`${MUNICODE_API_BASE}/ClientContent/${clientId}`);
-  return normalizeProductsResponse(response.data);
+  return { products: normalizeProductsResponse(response.data), raw: response.data };
+}
+
+/** Get the list of code "products" a jurisdiction has (raw response discarded — use getClientContentWithRaw if you need to debug an empty result). */
+export async function getClientContent(clientId: number): Promise<MunicodeProduct[]> {
+  const { products } = await getClientContentWithRaw(clientId);
+  return products;
 }
 
 /** Get the children of a node in a code's table-of-contents tree. */
@@ -168,7 +199,7 @@ export async function resolveJurisdiction(
   const clientId = client.ClientID;
   if (!clientId) return null;
 
-  const products = await getClientContent(clientId);
+  const { products, raw: rawProducts } = await getClientContentWithRaw(clientId);
 
   let codeProduct: ResolvedProduct | null = null;
   for (const p of products) {
@@ -186,6 +217,9 @@ export async function resolveJurisdiction(
     city: client.City,
     website: client.Website,
     products,
-    codeProduct
+    codeProduct,
+    // Only kept for debugging an empty/unexpected products list — omit
+    // when products were parsed normally to avoid bloating every response.
+    rawProductsIfEmpty: products.length === 0 ? rawProducts : undefined
   };
 }
