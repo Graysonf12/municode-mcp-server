@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import {
   FindJurisdictionInputSchema,
+  GetProductDetailsInputSchema,
   GetSectionTextInputSchema,
   GetTableOfContentsInputSchema,
   SearchOrdinancesInputSchema
@@ -10,6 +11,7 @@ import { runFindJurisdiction } from "./tools/findJurisdiction.js";
 import { runGetTableOfContents } from "./tools/getTableOfContents.js";
 import { runGetSectionText } from "./tools/getSectionText.js";
 import { runSearchOrdinances } from "./tools/searchOrdinances.js";
+import { runGetProductDetails } from "./tools/getProductDetails.js";
 
 /**
  * Builds a fresh, fully-configured McpServer instance. See the FEMA NFHL
@@ -119,6 +121,29 @@ Returns: matching sections with title, snippet, and node_id — feed a result's 
       }
     },
     async (params) => runSearchOrdinances(params)
+  );
+
+  server.registerTool(
+    "municode_get_product_details_raw",
+    {
+      title: "Get Raw Municode Product Details (diagnostic)",
+      description: `DIAGNOSTIC TOOL: calls Municode's Products/name endpoint directly and returns the completely unprocessed raw response. Exists to solve a known open problem — municode_find_jurisdiction's job_id_candidate field is a best-effort guess that is NOT reliably correct (confirmed wrong on at least one live jurisdiction). This tool lets you inspect the raw Products/name response to find whichever field actually holds the real job_id needed by municode_get_table_of_contents and municode_get_section_text.
+
+Args:
+  - client_id (integer): from municode_find_jurisdiction's output.
+  - product_name (string): exactly as it appeared in municode_find_jurisdiction's products list, e.g. "Code of Ordinances".
+  - response_format ('markdown' | 'json'): default 'markdown'.
+
+Returns: the complete raw JSON response, no extraction applied. Use this when municode_get_table_of_contents 404s on every job_id guess.`,
+      inputSchema: GetProductDetailsInputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true
+      }
+    },
+    async (params) => runGetProductDetails(params)
   );
 
   return server;
