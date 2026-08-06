@@ -38,7 +38,7 @@ Args:
   - state_abbr (string): two-letter state code, e.g. "KY", "FL".
   - response_format ('markdown' | 'json'): default 'markdown'.
 
-Returns: the jurisdiction's Client ID, its list of code products with job_id/product_id pairs, and a best-guess match for the primary Code of Ordinances product. Use the returned job_id/product_id with municode_get_table_of_contents or municode_get_section_text, and client_id with municode_search_ordinances.
+Returns: the jurisdiction's Client ID, its list of code products with job_id/product_id pairs, and the CONFIRMED job_id/product_id for the primary Code of Ordinances product (fetched live via Municode's own /Jobs/latest endpoint — not a guess). Use the returned job_id/product_id with municode_get_table_of_contents or municode_get_section_text, and client_id with municode_search_ordinances.
 
 Always call this first — every other tool in this server needs IDs this tool returns.`,
       inputSchema: FindJurisdictionInputSchema,
