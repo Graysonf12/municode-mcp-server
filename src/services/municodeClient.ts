@@ -1,5 +1,5 @@
 import axios, { AxiosError } from "axios";
-import { MUNICODE_API_BASE, MUNICODE_CONTENT_API_BASE, REQUEST_TIMEOUT_MS } from "../constants.js";
+import { MUNICODE_API_BASE, MUNICODE_CONTENT_API_BASE, MUNICODE_LIBRARY_BASE, REQUEST_TIMEOUT_MS } from "../constants.js";
 import type {
   MunicodeJurisdiction,
   MunicodeProduct,
@@ -32,6 +32,25 @@ const http = axios.create({
   headers: {
     "User-Agent": "municode-mcp-server/1.0 (+https://github.com/)",
     Accept: "application/json"
+  }
+});
+
+// Content-API requests (codesToc/children, CodesContent, search,
+// Products/name) returned HTTP 401 with an empty body when called without
+// a Referer — live-observed on Georgetown, KY (job_id 438885, product_id
+// 14009) after the base-URL fix confirmed the endpoint/params were
+// otherwise correct. This strongly suggests Referer-gating: Municode's
+// front-end always sends one, a bare server-to-server call doesn't. This
+// is a hypothesis fix, not yet confirmed — if it doesn't resolve the 401,
+// the real requirement may be a session cookie instead, which a stateless
+// server cannot straightforwardly replicate.
+const contentHttp = axios.create({
+  timeout: REQUEST_TIMEOUT_MS,
+  headers: {
+    "User-Agent": "municode-mcp-server/1.0 (+https://github.com/)",
+    Accept: "application/json",
+    Referer: MUNICODE_LIBRARY_BASE + "/",
+    Origin: MUNICODE_LIBRARY_BASE
   }
 });
 
@@ -138,7 +157,7 @@ export async function getProductByName(
   clientId: number,
   productName: string
 ): Promise<MunicodeProduct> {
-  const response = await http.get<MunicodeProduct>(`${MUNICODE_CONTENT_API_BASE}/Products/name`, {
+  const response = await contentHttp.get<MunicodeProduct>(`${MUNICODE_CONTENT_API_BASE}/Products/name`, {
     params: { clientId, productName }
   });
   return response.data;
@@ -150,7 +169,7 @@ export async function getTocChildren(
   productId: number,
   nodeId: string
 ): Promise<MunicodeTocNode[]> {
-  const response = await http.get<MunicodeTocNode[]>(`${MUNICODE_CONTENT_API_BASE}/codesToc/children`, {
+  const response = await contentHttp.get<MunicodeTocNode[]>(`${MUNICODE_CONTENT_API_BASE}/codesToc/children`, {
     params: { jobId, productId, nodeId }
   });
   return response.data;
@@ -162,7 +181,7 @@ export async function getCodesContent(
   productId: number,
   nodeId: string
 ): Promise<unknown> {
-  const response = await http.get(`${MUNICODE_CONTENT_API_BASE}/CodesContent`, {
+  const response = await contentHttp.get(`${MUNICODE_CONTENT_API_BASE}/CodesContent`, {
     params: { jobId, productId, nodeId }
   });
   return response.data;
@@ -176,7 +195,7 @@ export async function searchMuniDocs(
   pageSize: number,
   titlesOnly: boolean
 ): Promise<unknown> {
-  const response = await http.get(`${MUNICODE_CONTENT_API_BASE}/search`, {
+  const response = await contentHttp.get(`${MUNICODE_CONTENT_API_BASE}/search`, {
     params: {
       clientId,
       searchText,
