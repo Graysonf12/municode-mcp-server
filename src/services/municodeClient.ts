@@ -92,9 +92,11 @@ export async function getClientsByState(stateAbbr: string): Promise<MunicodeJuri
 
 // Candidate wrapper field names in case ClientContent doesn't return a bare
 // array for every jurisdiction — confirmed necessary after a live run
-// (Georgetown, KY) returned a non-array shape that crashed a naive
-// `for...of` loop. Never assume this endpoint's shape without checking.
-const PRODUCTS_WRAPPER_FIELDS = ["Products", "products", "Items", "items", "Content", "content"];
+// (Georgetown, KY, client 11590) returned a wrapped shape: { codes: [...],
+// features: [...], munidocs: [...] }, not a bare array or any of the
+// generic names first guessed. "codes" is now confirmed live; the others
+// are kept as fallbacks in case a different content type wraps differently.
+const PRODUCTS_WRAPPER_FIELDS = ["codes", "Products", "products", "Items", "items", "Content", "content"];
 
 function normalizeProductsResponse(raw: unknown): MunicodeProduct[] {
   if (Array.isArray(raw)) return raw as MunicodeProduct[];
@@ -185,11 +187,23 @@ export async function searchMuniDocs(
 /**
  * Resolves a municipality name + state into everything downstream tools
  * need: the ClientID, its list of products, and a best-guess match for
- * the "Code of Ordinances" product (the one whose name contains "code",
- * case-insensitive — the same heuristic the reference implementation
- * uses, since Municode doesn't tag a single canonical product type).
- * A jurisdiction with a separate "Zoning Ordinance" product will still
- * list it in `products` even if it isn't picked as `codeProduct`.
+ * the "Code of Ordinances" product.
+ *
+ * Product matching prefers `contentTypeId === "CODES"` (confirmed live
+ * field, Georgetown KY client 11590) over name-substring matching, since
+ * it's a precise signal rather than a guess. Falls back to matching "code"
+ * in the product name (case-insensitive, checking both camelCase and the
+ * reference implementation's assumed PascalCase) if contentTypeId isn't
+ * present for some content type.
+ *
+ * IMPORTANT UNCONFIRMED PIECE: the live response has no separate "job ID"
+ * field the way the original reference implementation assumed (it expected
+ * both an `Id` and a `ProductID` per product). This code uses `publicationId`
+ * as the best-guess stand-in for that missing jobId concept — UNVERIFIED
+ * against a live municode_get_table_of_contents call as of this fix. If it's
+ * wrong, the next-best guess is that `productId` itself doubles as both
+ * values. See ResolvedProduct.jobIdCandidate and the tool descriptions that
+ * surface this uncertainty to the caller.
  */
 export async function resolveJurisdiction(
   municipalityName: string,
@@ -202,11 +216,37 @@ export async function resolveJurisdiction(
   const { products, raw: rawProducts } = await getClientContentWithRaw(clientId);
 
   let codeProduct: ResolvedProduct | null = null;
+
+  // Pass 1: precise match on contentTypeId === "CODES".
   for (const p of products) {
-    const name = (p.ProductName ?? "").toLowerCase();
-    if (name.includes("code") && p.Id !== undefined && p.ProductID !== undefined) {
-      codeProduct = { jobId: p.Id, productId: p.ProductID, productName: p.ProductName ?? "" };
-      break;
+    if (p.contentTypeId === "CODES") {
+      const productId = p.productId ?? p.ProductID;
+      if (productId !== undefined) {
+        codeProduct = {
+          productId,
+          jobIdCandidate: p.publicationId ?? p.Id ?? productId,
+          productName: p.productName ?? p.ProductName ?? "",
+          contentTypeId: p.contentTypeId
+        };
+        break;
+      }
+    }
+  }
+
+  // Pass 2: fall back to name-substring matching if no contentTypeId match.
+  if (!codeProduct) {
+    for (const p of products) {
+      const name = (p.productName ?? p.ProductName ?? "").toLowerCase();
+      const productId = p.productId ?? p.ProductID;
+      if (name.includes("code") && productId !== undefined) {
+        codeProduct = {
+          productId,
+          jobIdCandidate: p.publicationId ?? p.Id ?? productId,
+          productName: p.productName ?? p.ProductName ?? "",
+          contentTypeId: p.contentTypeId
+        };
+        break;
+      }
     }
   }
 
