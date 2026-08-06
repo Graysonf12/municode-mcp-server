@@ -41,7 +41,7 @@ export interface MunicodeTocNode {
 
 export interface ResolvedProduct {
   productId: number;
-  jobIdCandidate: number; // best guess (publicationId) — see municodeClient.ts note; UNCONFIRMED against a live TOC call
+  jobId: number; // CONFIRMED via GET /Jobs/latest/{productId} — no longer a guess
   productName: string;
   contentTypeId?: string;
 }
