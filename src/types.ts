@@ -16,9 +16,20 @@ export interface MunicodeJurisdiction {
 }
 
 export interface MunicodeProduct {
-  Id?: number; // doubles as the "jobId" needed for TOC/content lookups
-  ProductID?: number;
+  // Confirmed live field names (camelCase) as of this build — the
+  // reference implementation's PascalCase assumption (ProductName,
+  // ProductID, Id) turned out to be stale. Both casings are kept as
+  // optional so extraction can check either without crashing.
+  productName?: string;
+  productId?: number;
+  publicationId?: number; // best-guess stand-in for the old "jobId" concept — UNCONFIRMED, see municodeClient.ts
+  contentTypeId?: string; // e.g. "CODES" — a more reliable "is this the ordinance code" signal than name-matching
+  latestUpdatedDate?: string;
+  hasPdf?: boolean;
+  // legacy/possible alternate casings, kept for defensive extraction
   ProductName?: string;
+  ProductID?: number;
+  Id?: number;
   [key: string]: unknown;
 }
 
@@ -29,9 +40,10 @@ export interface MunicodeTocNode {
 }
 
 export interface ResolvedProduct {
-  jobId: number;
   productId: number;
+  jobIdCandidate: number; // best guess (publicationId) — see municodeClient.ts note; UNCONFIRMED against a live TOC call
   productName: string;
+  contentTypeId?: string;
 }
 
 export interface ResolvedJurisdiction {
