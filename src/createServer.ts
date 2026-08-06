@@ -97,3 +97,29 @@ Returns: the section's text, HTML-stripped to plain readable text where the resp
   );
 
   server.registerTool(
+    "municode_search_ordinances",
+    {
+      title: "Search Municode Ordinances",
+      description: `Full-text search across a jurisdiction's ordinances for a word or phrase — faster than browsing the table of contents when you know roughly what you're looking for (e.g. "car wash", "drive-through", "setback").
+
+Args:
+  - client_id (integer): from municode_find_jurisdiction's output.
+  - search_text (string): word or phrase to search for.
+  - page_size, page_number (integers, optional): pagination, default 10/1.
+  - titles_only (boolean, optional): restrict to section headings only, default false.
+  - response_format ('markdown' | 'json'): default 'markdown'.
+
+Returns: matching sections with title, snippet, and node_id — feed a result's node_id into municode_get_section_text to read the full section. Note: this endpoint's exact response shape has not been confirmed against a live call as of this build — if unrecognized, raw JSON is returned instead of dropped results.`,
+      inputSchema: SearchOrdinancesInputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true
+      }
+    },
+    async (params) => runSearchOrdinances(params)
+  );
+
+  return server;
+}
