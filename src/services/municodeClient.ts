@@ -74,10 +74,30 @@ export async function getClientsByState(stateAbbr: string): Promise<MunicodeJuri
   return response.data;
 }
 
+// Candidate wrapper field names in case ClientContent doesn't return a bare
+// array for every jurisdiction — confirmed necessary after a live run
+// (Georgetown, KY) returned a non-array shape that crashed a naive
+// `for...of` loop. Never assume this endpoint's shape without checking.
+const PRODUCTS_WRAPPER_FIELDS = ["Products", "products", "Items", "items", "Content", "content"];
+
+function normalizeProductsResponse(raw: unknown): MunicodeProduct[] {
+  if (Array.isArray(raw)) return raw as MunicodeProduct[];
+  if (raw && typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    for (const field of PRODUCTS_WRAPPER_FIELDS) {
+      const val = obj[field];
+      if (Array.isArray(val)) return val as MunicodeProduct[];
+    }
+  }
+  // Genuinely empty/unrecognized — return [] rather than throwing, so
+  // callers can report "0 products found" instead of crashing outright.
+  return [];
+}
+
 /** Get the list of code "products" (Code of Ordinances, Zoning Ordinance, etc.) a jurisdiction has. */
 export async function getClientContent(clientId: number): Promise<MunicodeProduct[]> {
-  const response = await http.get<MunicodeProduct[]>(`${MUNICODE_API_BASE}/ClientContent/${clientId}`);
-  return response.data;
+  const response = await http.get<unknown>(`${MUNICODE_API_BASE}/ClientContent/${clientId}`);
+  return normalizeProductsResponse(response.data);
 }
 
 /** Get the children of a node in a code's table-of-contents tree. */
