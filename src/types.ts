@@ -42,4 +42,5 @@ export interface ResolvedJurisdiction {
   website?: string;
   products: MunicodeProduct[];
   codeProduct: ResolvedProduct | null; // best-guess "Code of Ordinances" match
+  rawProductsIfEmpty?: unknown; // present only when products.length === 0, for debugging
 }
