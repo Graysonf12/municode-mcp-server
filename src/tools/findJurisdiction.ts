@@ -35,22 +35,24 @@ export async function runFindJurisdiction(params: FindJurisdictionInput) {
     city: resolved.city ?? null,
     website: resolved.website ?? null,
     products: resolved.products.map((p) => ({
-      job_id: p.Id ?? null,
-      product_id: p.ProductID ?? null,
-      product_name: p.ProductName ?? null
+      product_name: p.productName ?? p.ProductName ?? null,
+      product_id: p.productId ?? p.ProductID ?? null,
+      publication_id: p.publicationId ?? null,
+      content_type_id: p.contentTypeId ?? null
     })),
     likely_code_of_ordinances: resolved.codeProduct
       ? {
-          job_id: resolved.codeProduct.jobId,
           product_id: resolved.codeProduct.productId,
-          product_name: resolved.codeProduct.productName
+          job_id_candidate: resolved.codeProduct.jobIdCandidate,
+          product_name: resolved.codeProduct.productName,
+          content_type_id: resolved.codeProduct.contentTypeId ?? null
         }
       : null,
     note: resolved.codeProduct
-      ? "Use likely_code_of_ordinances' job_id/product_id with municode_get_table_of_contents to browse chapters, or with municode_search_ordinances (using client_id) to search directly."
+      ? "IMPORTANT: job_id_candidate is a best guess (Municode's publicationId field), NOT a confirmed value — the live API response no longer includes the separate 'job ID' field the way this tool originally assumed. Try job_id_candidate as job_id in municode_get_table_of_contents first. If that 404s, retry using product_id's value as job_id instead, and report back which one worked so this can be corrected permanently."
       : resolved.products.length === 0
         ? "Zero products returned for this jurisdiction. This can mean the jurisdiction genuinely has no code products on Municode, OR that Municode's API returned an unrecognized/empty response shape for this client_id (a known live-observed quirk — see server README). Before concluding this jurisdiction has no Municode code, spot-check library.municode.com directly for this jurisdiction. The raw_products_response field below shows exactly what Municode's API returned for this client_id — inspect it for a wrapper field name this tool doesn't yet recognize."
-        : "No product with 'code' in its name was found automatically — inspect the full products list and pick the right job_id/product_id manually (e.g. a jurisdiction may call it 'Zoning Ordinance' or 'Land Development Code' instead).",
+        : "No product matched by contentTypeId='CODES' or by 'code' in its name — inspect the full products list and pick the right product_id manually (e.g. a jurisdiction may call it 'Zoning Ordinance' or 'Land Development Code' instead).",
     raw_products_response: resolved.rawProductsIfEmpty ?? undefined
   };
 
@@ -65,12 +67,14 @@ export async function runFindJurisdiction(params: FindJurisdictionInput) {
     lines.push("");
     lines.push(`## Available code products (${output.products.length})`);
     for (const p of output.products) {
-      lines.push(`- **${p.product_name ?? "(unnamed)"}** — job_id: ${p.job_id}, product_id: ${p.product_id}`);
+      lines.push(
+        `- **${p.product_name ?? "(unnamed)"}** — product_id: ${p.product_id}, publication_id: ${p.publication_id}${p.content_type_id ? `, content_type: ${p.content_type_id}` : ""}`
+      );
     }
     lines.push("");
     if (output.likely_code_of_ordinances) {
       lines.push(
-        `**Best-guess Code of Ordinances:** "${output.likely_code_of_ordinances.product_name}" (job_id: ${output.likely_code_of_ordinances.job_id}, product_id: ${output.likely_code_of_ordinances.product_id})`
+        `**Best-guess Code of Ordinances:** "${output.likely_code_of_ordinances.product_name}" (product_id: ${output.likely_code_of_ordinances.product_id}, job_id_candidate: ${output.likely_code_of_ordinances.job_id_candidate})`
       );
     }
     lines.push("");
