@@ -43,13 +43,13 @@ export async function runFindJurisdiction(params: FindJurisdictionInput) {
     likely_code_of_ordinances: resolved.codeProduct
       ? {
           product_id: resolved.codeProduct.productId,
-          job_id_candidate: resolved.codeProduct.jobIdCandidate,
+          job_id: resolved.codeProduct.jobId,
           product_name: resolved.codeProduct.productName,
           content_type_id: resolved.codeProduct.contentTypeId ?? null
         }
       : null,
     note: resolved.codeProduct
-      ? "IMPORTANT: job_id_candidate is a best guess (Municode's publicationId field), NOT a confirmed value — the live API response no longer includes the separate 'job ID' field the way this tool originally assumed. Try job_id_candidate as job_id in municode_get_table_of_contents first. If that 404s, retry using product_id's value as job_id instead, and report back which one worked so this can be corrected permanently."
+      ? "job_id is CONFIRMED (fetched live via /Jobs/latest) — pass product_id and job_id directly to municode_get_table_of_contents or municode_get_section_text."
       : resolved.products.length === 0
         ? "Zero products returned for this jurisdiction. This can mean the jurisdiction genuinely has no code products on Municode, OR that Municode's API returned an unrecognized/empty response shape for this client_id (a known live-observed quirk — see server README). Before concluding this jurisdiction has no Municode code, spot-check library.municode.com directly for this jurisdiction. The raw_products_response field below shows exactly what Municode's API returned for this client_id — inspect it for a wrapper field name this tool doesn't yet recognize."
         : "No product matched by contentTypeId='CODES' or by 'code' in its name — inspect the full products list and pick the right product_id manually (e.g. a jurisdiction may call it 'Zoning Ordinance' or 'Land Development Code' instead).",
@@ -74,7 +74,7 @@ export async function runFindJurisdiction(params: FindJurisdictionInput) {
     lines.push("");
     if (output.likely_code_of_ordinances) {
       lines.push(
-        `**Best-guess Code of Ordinances:** "${output.likely_code_of_ordinances.product_name}" (product_id: ${output.likely_code_of_ordinances.product_id}, job_id_candidate: ${output.likely_code_of_ordinances.job_id_candidate})`
+        `**Code of Ordinances:** "${output.likely_code_of_ordinances.product_name}" (product_id: ${output.likely_code_of_ordinances.product_id}, job_id: ${output.likely_code_of_ordinances.job_id})`
       );
     }
     lines.push("");
