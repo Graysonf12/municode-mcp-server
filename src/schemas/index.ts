@@ -81,3 +81,20 @@ export const SearchOrdinancesInputSchema = z
   })
   .strict();
 export type SearchOrdinancesInput = z.infer<typeof SearchOrdinancesInputSchema>;
+
+export const GetProductDetailsInputSchema = z
+  .object({
+    client_id: z
+      .number()
+      .int()
+      .describe("The ClientID for the jurisdiction — obtained from municode_find_jurisdiction's output."),
+    product_name: z
+      .string()
+      .min(1)
+      .describe(
+        "The product's name exactly as returned by municode_find_jurisdiction's products list, e.g. 'Code of Ordinances'."
+      ),
+    response_format: ResponseFormatSchema
+  })
+  .strict();
+export type GetProductDetailsInput = z.infer<typeof GetProductDetailsInputSchema>;
