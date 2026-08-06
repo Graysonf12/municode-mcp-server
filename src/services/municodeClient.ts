@@ -1,5 +1,5 @@
 import axios, { AxiosError } from "axios";
-import { MUNICODE_API_BASE, REQUEST_TIMEOUT_MS } from "../constants.js";
+import { MUNICODE_API_BASE, MUNICODE_CONTENT_API_BASE, REQUEST_TIMEOUT_MS } from "../constants.js";
 import type {
   MunicodeJurisdiction,
   MunicodeProduct,
@@ -133,13 +133,24 @@ export async function getClientContent(clientId: number): Promise<MunicodeProduc
   return products;
 }
 
+/** Get information on a particular product a client subscribes to, by name — confirmed live (Georgetown KY) at the content API base, more precise than filtering the full ClientContent list. */
+export async function getProductByName(
+  clientId: number,
+  productName: string
+): Promise<MunicodeProduct> {
+  const response = await http.get<MunicodeProduct>(`${MUNICODE_CONTENT_API_BASE}/Products/name`, {
+    params: { clientId, productName }
+  });
+  return response.data;
+}
+
 /** Get the children of a node in a code's table-of-contents tree. */
 export async function getTocChildren(
   jobId: number,
   productId: number,
   nodeId: string
 ): Promise<MunicodeTocNode[]> {
-  const response = await http.get<MunicodeTocNode[]>(`${MUNICODE_API_BASE}/codesToc/children`, {
+  const response = await http.get<MunicodeTocNode[]>(`${MUNICODE_CONTENT_API_BASE}/codesToc/children`, {
     params: { jobId, productId, nodeId }
   });
   return response.data;
@@ -151,7 +162,7 @@ export async function getCodesContent(
   productId: number,
   nodeId: string
 ): Promise<unknown> {
-  const response = await http.get(`${MUNICODE_API_BASE}/CodesContent`, {
+  const response = await http.get(`${MUNICODE_CONTENT_API_BASE}/CodesContent`, {
     params: { jobId, productId, nodeId }
   });
   return response.data;
@@ -165,7 +176,7 @@ export async function searchMuniDocs(
   pageSize: number,
   titlesOnly: boolean
 ): Promise<unknown> {
-  const response = await http.get(`${MUNICODE_API_BASE}/search`, {
+  const response = await http.get(`${MUNICODE_CONTENT_API_BASE}/search`, {
     params: {
       clientId,
       searchText,
