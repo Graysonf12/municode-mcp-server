@@ -48,7 +48,9 @@ export async function runFindJurisdiction(params: FindJurisdictionInput) {
       : null,
     note: resolved.codeProduct
       ? "Use likely_code_of_ordinances' job_id/product_id with municode_get_table_of_contents to browse chapters, or with municode_search_ordinances (using client_id) to search directly."
-      : "No product with 'code' in its name was found automatically — inspect the full products list and pick the right job_id/product_id manually (e.g. a jurisdiction may call it 'Zoning Ordinance' or 'Land Development Code' instead)."
+      : resolved.products.length === 0
+        ? "Zero products returned for this jurisdiction. This can mean the jurisdiction genuinely has no code products on Municode, OR that Municode's API returned an unrecognized/empty response shape for this client_id (a known live-observed quirk — see server README). Before concluding this jurisdiction has no Municode code, spot-check library.municode.com directly for this jurisdiction."
+        : "No product with 'code' in its name was found automatically — inspect the full products list and pick the right job_id/product_id manually (e.g. a jurisdiction may call it 'Zoning Ordinance' or 'Land Development Code' instead)."
   };
 
   let text: string;
