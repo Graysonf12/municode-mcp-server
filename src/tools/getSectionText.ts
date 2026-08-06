@@ -2,15 +2,19 @@ import { CHARACTER_LIMIT } from "../constants.js";
 import { formatMunicodeError, getCodesContent } from "../services/municodeClient.js";
 import { ResponseFormat, type GetSectionTextInput } from "../schemas/index.js";
 
-// The CodesContent endpoint's exact response shape is NOT confirmed against
-// a live response (see municodeClient.ts header note) — the reference
-// implementation this was built from simply JSON-dumps whatever comes back
-// without asserting a schema. This tool makes a best-effort attempt to find
-// a plausible HTML/text field among common candidate names and strip tags
-// for a readable result; if none match, it falls back to showing the raw
-// JSON so nothing is silently dropped. Confirm the real shape on first live
-// call and tighten this extraction once observed.
+// CONFIRMED live shape (Palm Springs, FL, node
+// PTIICOOR_CH34LADE_ARTVILAUS_DIV6DIRE_SDVCGCOGE_S34-826PRDERE):
+// CodesContent does NOT return a single text/HTML field for the requested
+// node. It returns the entire surrounding "chunk group" (the whole
+// enclosing Division/Article) as { Docs: [ {Id, Title, Content: "<html>"},
+// ... ] } — every section in that group, not just the one asked for. This
+// tool now searches that array for the doc whose Id matches the requested
+// node_id and extracts ONLY that one's Content, rather than dumping the
+// entire surrounding group. The old single-field guess (Content/Html/Text
+// at the top level) is kept as a fallback in case some node types return a
+// simpler shape.
 const CANDIDATE_TEXT_FIELDS = ["Content", "Html", "HtmlContent", "Text", "Body", "content", "html", "text"];
+const DOCS_ARRAY_FIELDS = ["Docs", "docs"];
 
 function stripHtml(html: string): string {
   return html
@@ -25,6 +29,52 @@ function stripHtml(html: string): string {
     .replace(/&gt;/g, ">")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+interface CodesContentDoc {
+  Id?: string;
+  Title?: string;
+  Content?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Finds the specific doc matching the requested node_id inside a Docs-array
+ * response. Tries an exact Id match first; if the exact node_id was itself a
+ * group heading with no direct content (rare), falls back to concatenating
+ * all docs whose Id starts with the requested node_id (its descendants).
+ */
+function extractFromDocsArray(
+  raw: unknown,
+  requestedNodeId: string
+): { matchedTitle: string | null; text: string | null; totalDocsInGroup: number } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  let docs: CodesContentDoc[] | null = null;
+  for (const field of DOCS_ARRAY_FIELDS) {
+    const val = obj[field];
+    if (Array.isArray(val)) {
+      docs = val as CodesContentDoc[];
+      break;
+    }
+  }
+  if (!docs) return null;
+
+  const exact = docs.find((d) => d.Id === requestedNodeId);
+  if (exact && exact.Content) {
+    return { matchedTitle: exact.Title ?? null, text: stripHtml(exact.Content), totalDocsInGroup: docs.length };
+  }
+
+  // Fallback: requested node was a heading with children — concatenate its descendants.
+  const descendants = docs.filter((d) => d.Id && d.Id.startsWith(requestedNodeId + "_"));
+  if (descendants.length > 0) {
+    const combined = descendants
+      .map((d) => `## ${d.Title ?? d.Id}\n\n${d.Content ? stripHtml(d.Content) : "(no content)"}`)
+      .join("\n\n");
+    return { matchedTitle: exact?.Title ?? null, text: combined, totalDocsInGroup: docs.length };
+  }
+
+  return { matchedTitle: null, text: null, totalDocsInGroup: docs.length };
 }
 
 function extractLikelyText(raw: unknown): string | null {
@@ -54,14 +104,23 @@ export async function runGetSectionText(params: GetSectionTextInput) {
     };
   }
 
-  const likelyHtml = extractLikelyText(raw);
-  const plainText = likelyHtml ? stripHtml(likelyHtml) : null;
+  // Try the confirmed Docs-array shape first (the real, observed shape).
+  const docsResult = extractFromDocsArray(raw, params.node_id);
+  const plainText = docsResult?.text ?? (() => {
+    const likelyHtml = extractLikelyText(raw);
+    return likelyHtml ? stripHtml(likelyHtml) : null;
+  })();
 
   const output = {
     job_id: params.job_id,
     product_id: params.product_id,
     node_id: params.node_id,
-    extraction_confidence: plainText ? "matched a likely content field" : "unrecognized shape — raw JSON returned",
+    matched_title: docsResult?.matchedTitle ?? null,
+    extraction_confidence: plainText
+      ? docsResult
+        ? "matched exact section within the returned chunk group"
+        : "matched a likely top-level content field"
+      : "unrecognized shape — raw JSON returned",
     text: plainText,
     raw: plainText ? undefined : raw
   };
@@ -69,11 +128,12 @@ export async function runGetSectionText(params: GetSectionTextInput) {
   let text: string;
   if (params.response_format === ResponseFormat.MARKDOWN) {
     const lines = [`# Section Text — node ${params.node_id}`, ""];
+    if (output.matched_title) lines.push(`**${output.matched_title}**`, "");
     if (plainText) {
       lines.push(plainText);
     } else {
       lines.push(
-        "Could not confidently identify a text/HTML field in the API response for this node — showing raw JSON below. This means the CodesContent response shape differs from what this tool expected; treat this node's content as unverified and consider cross-checking against library.municode.com directly for this section.",
+        "Could not confidently identify this specific section's text within the API response — showing raw JSON below. This means the CodesContent response shape differs from what this tool expected; treat this node's content as unverified and consider cross-checking against library.municode.com directly for this section.",
         "",
         "```json",
         JSON.stringify(raw, null, 2),
