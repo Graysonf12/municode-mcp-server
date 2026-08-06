@@ -37,20 +37,25 @@ const http = axios.create({
 
 // Content-API requests (codesToc/children, CodesContent, search,
 // Products/name) returned HTTP 401 with an empty body when called without
-// a Referer — live-observed on Georgetown, KY (job_id 438885, product_id
-// 14009) after the base-URL fix confirmed the endpoint/params were
-// otherwise correct. This strongly suggests Referer-gating: Municode's
-// front-end always sends one, a bare server-to-server call doesn't. This
-// is a hypothesis fix, not yet confirmed — if it doesn't resolve the 401,
-// the real requirement may be a session cookie instead, which a stateless
-// server cannot straightforwardly replicate.
+// specific headers their own front-end always sends — live-observed on
+// Georgetown, KY (job_id 438885, product_id 14009) after the base-URL fix
+// confirmed the endpoint/params were otherwise correct. A live DevTools
+// capture of the exact working browser request showed the header
+// "X-Csrf: 1" present — a static value (not a per-session token), so safe
+// to hardcode. Referer/Origin are included too since they were present on
+// the same working request, even though X-Csrf looks like the more likely
+// actual gate. (The captured request also had session/analytics cookies —
+// deliberately NOT replicated here, since those are per-visitor tracking
+// values, not something a server should reuse, and unlikely to be the
+// actual access gate given X-Csrf's presence.)
 const contentHttp = axios.create({
   timeout: REQUEST_TIMEOUT_MS,
   headers: {
     "User-Agent": "municode-mcp-server/1.0 (+https://github.com/)",
     Accept: "application/json",
     Referer: MUNICODE_LIBRARY_BASE + "/",
-    Origin: MUNICODE_LIBRARY_BASE
+    Origin: MUNICODE_LIBRARY_BASE,
+    "X-Csrf": "1"
   }
 });
 
