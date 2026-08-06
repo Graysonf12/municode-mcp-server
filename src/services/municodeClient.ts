@@ -157,6 +157,23 @@ export async function getClientContent(clientId: number): Promise<MunicodeProduc
   return products;
 }
 
+/**
+ * Get the real, currently-published job for a product — the confirmed,
+ * generalizable way to obtain the job_id that municode_get_table_of_contents
+ * and municode_get_section_text require. Discovered live (Palm Springs, FL,
+ * client 10739, product 12651 → Jobs/latest/12651 → Id: 400865) after
+ * Georgetown, KY's job_id (438885) had to be found manually via DevTools —
+ * this endpoint is what Municode's own front-end actually calls to resolve
+ * that number, and it works from productId alone. This REPLACES the old
+ * "job_id_candidate" guesswork (publicationId/Id fallback chain) entirely.
+ */
+export async function getLatestJob(productId: number): Promise<{ id: number; name: string; isLatest: boolean }> {
+  const response = await contentHttp.get<{ Id: number; Name: string; IsLatest: boolean }>(
+    `${MUNICODE_CONTENT_API_BASE}/Jobs/latest/${productId}`
+  );
+  return { id: response.data.Id, name: response.data.Name, isLatest: response.data.IsLatest };
+}
+
 /** Get information on a particular product a client subscribes to, by name — confirmed live (Georgetown KY) at the content API base, more precise than filtering the full ClientContent list. */
 export async function getProductByName(
   clientId: number,
@@ -221,24 +238,22 @@ export async function searchMuniDocs(
 
 /**
  * Resolves a municipality name + state into everything downstream tools
- * need: the ClientID, its list of products, and a best-guess match for
- * the "Code of Ordinances" product.
+ * need: the ClientID, its list of products, and a CONFIRMED job_id + product
+ * match for the "Code of Ordinances" product.
  *
  * Product matching prefers `contentTypeId === "CODES"` (confirmed live
  * field, Georgetown KY client 11590) over name-substring matching, since
  * it's a precise signal rather than a guess. Falls back to matching "code"
- * in the product name (case-insensitive, checking both camelCase and the
- * reference implementation's assumed PascalCase) if contentTypeId isn't
- * present for some content type.
+ * in the product name if contentTypeId isn't present for some content type.
  *
- * IMPORTANT UNCONFIRMED PIECE: the live response has no separate "job ID"
- * field the way the original reference implementation assumed (it expected
- * both an `Id` and a `ProductID` per product). This code uses `publicationId`
- * as the best-guess stand-in for that missing jobId concept — UNVERIFIED
- * against a live municode_get_table_of_contents call as of this fix. If it's
- * wrong, the next-best guess is that `productId` itself doubles as both
- * values. See ResolvedProduct.jobIdCandidate and the tool descriptions that
- * surface this uncertainty to the caller.
+ * job_id resolution: CONFIRMED as of this fix — once the code product is
+ * identified, its real job_id is fetched via GET /Jobs/latest/{productId}
+ * (returns { Id, Name, IsLatest, ... }), the same endpoint Municode's own
+ * front-end calls. This replaces the earlier "job_id_candidate" guesswork
+ * (which tried publicationId, then Id, then productId — none of which were
+ * ever actually correct; confirmed wrong on both Georgetown KY, job_id
+ * 438885, and Palm Springs FL, job_id 400865, neither of which matched any
+ * field on the product list itself).
  */
 export async function resolveJurisdiction(
   municipalityName: string,
@@ -250,39 +265,47 @@ export async function resolveJurisdiction(
 
   const { products, raw: rawProducts } = await getClientContentWithRaw(clientId);
 
-  let codeProduct: ResolvedProduct | null = null;
+  let matchedProductId: number | undefined;
+  let matchedProductName = "";
+  let matchedContentTypeId: string | undefined;
 
   // Pass 1: precise match on contentTypeId === "CODES".
   for (const p of products) {
     if (p.contentTypeId === "CODES") {
       const productId = p.productId ?? p.ProductID;
       if (productId !== undefined) {
-        codeProduct = {
-          productId,
-          jobIdCandidate: p.publicationId ?? p.Id ?? productId,
-          productName: p.productName ?? p.ProductName ?? "",
-          contentTypeId: p.contentTypeId
-        };
+        matchedProductId = productId;
+        matchedProductName = p.productName ?? p.ProductName ?? "";
+        matchedContentTypeId = p.contentTypeId;
         break;
       }
     }
   }
 
   // Pass 2: fall back to name-substring matching if no contentTypeId match.
-  if (!codeProduct) {
+  if (matchedProductId === undefined) {
     for (const p of products) {
       const name = (p.productName ?? p.ProductName ?? "").toLowerCase();
       const productId = p.productId ?? p.ProductID;
       if (name.includes("code") && productId !== undefined) {
-        codeProduct = {
-          productId,
-          jobIdCandidate: p.publicationId ?? p.Id ?? productId,
-          productName: p.productName ?? p.ProductName ?? "",
-          contentTypeId: p.contentTypeId
-        };
+        matchedProductId = productId;
+        matchedProductName = p.productName ?? p.ProductName ?? "";
+        matchedContentTypeId = p.contentTypeId;
         break;
       }
     }
+  }
+
+  let codeProduct: ResolvedProduct | null = null;
+  if (matchedProductId !== undefined) {
+    // Fetch the CONFIRMED job_id — never guessed, always a real API call.
+    const latestJob = await getLatestJob(matchedProductId);
+    codeProduct = {
+      productId: matchedProductId,
+      jobId: latestJob.id,
+      productName: matchedProductName,
+      contentTypeId: matchedContentTypeId
+    };
   }
 
   return {
