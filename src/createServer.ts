@@ -5,6 +5,7 @@ import {
   GetProductDetailsInputSchema,
   GetSectionTextInputSchema,
   GetTableOfContentsInputSchema,
+  RawGetInputSchema,
   SearchOrdinancesInputSchema
 } from "./schemas/index.js";
 import { runFindJurisdiction } from "./tools/findJurisdiction.js";
@@ -12,6 +13,7 @@ import { runGetTableOfContents } from "./tools/getTableOfContents.js";
 import { runGetSectionText } from "./tools/getSectionText.js";
 import { runSearchOrdinances } from "./tools/searchOrdinances.js";
 import { runGetProductDetails } from "./tools/getProductDetails.js";
+import { runRawGet } from "./tools/rawGet.js";
 
 /**
  * Builds a fresh, fully-configured McpServer instance. See the FEMA NFHL
@@ -144,6 +146,29 @@ Returns: the complete raw JSON response, no extraction applied. Use this when mu
       }
     },
     async (params) => runGetProductDetails(params)
+  );
+
+  server.registerTool(
+    "municode_raw_get",
+    {
+      title: "Raw GET Against Municode Content API (diagnostic)",
+      description: `DIAGNOSTIC TOOL: makes a direct GET request to any path under library.municode.com/api, with any query parameters, and returns the raw HTTP status and response body — even on error responses. Use this to experiment when another tool is failing (e.g. a 500 or 404) and the exact required parameters are uncertain, instead of needing a human to capture browser DevTools traffic.
+
+Args:
+  - path (string): path relative to library.municode.com/api, e.g. "/search" or "/codesToc/children".
+  - query_params (object): key-value query string parameters, e.g. { clientId: 10739, searchText: "parking" }.
+  - response_format ('markdown' | 'json'): default 'markdown'.
+
+Returns: the real HTTP status code and full response body, whatever it is — including error responses, so a failed guess is still informative. Scoped only to library.municode.com/api; cannot reach any other URL.`,
+      inputSchema: RawGetInputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true
+      }
+    },
+    async (params) => runRawGet(params)
   );
 
   return server;
