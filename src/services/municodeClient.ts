@@ -174,6 +174,34 @@ export async function getLatestJob(productId: number): Promise<{ id: number; nam
   return { id: response.data.Id, name: response.data.Name, isLatest: response.data.IsLatest };
 }
 
+/**
+ * Generic diagnostic GET against library.municode.com/api, with arbitrary
+ * query params. Deliberately scoped ONLY to the content API base (never an
+ * arbitrary URL) so it can't be used to hit anything outside Municode's own
+ * API. Exists to let experimentation happen live, server-side, without
+ * needing another round of manual browser DevTools capture every time an
+ * endpoint's exact parameters are uncertain (e.g. /search, which returns
+ * 500 with the parameter set copied from the stale reference implementation
+ * — real params unconfirmed as of this build).
+ */
+export async function rawContentApiGet(
+  path: string,
+  queryParams: Record<string, string | number | boolean>
+): Promise<{ status: number; data: unknown }> {
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  try {
+    const response = await contentHttp.get(`${MUNICODE_CONTENT_API_BASE}${cleanPath}`, {
+      params: queryParams
+    });
+    return { status: response.status, data: response.data };
+  } catch (error) {
+    if (error instanceof AxiosError && error.response) {
+      return { status: error.response.status, data: error.response.data };
+    }
+    throw error;
+  }
+}
+
 /** Get information on a particular product a client subscribes to, by name — confirmed live (Georgetown KY) at the content API base, more precise than filtering the full ClientContent list. */
 export async function getProductByName(
   clientId: number,
