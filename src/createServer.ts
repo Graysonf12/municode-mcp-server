@@ -6,6 +6,7 @@ import {
   GetSectionTextInputSchema,
   GetTableOfContentsInputSchema,
   RawGetInputSchema,
+  RawPostInputSchema,
   SearchOrdinancesInputSchema
 } from "./schemas/index.js";
 import { runFindJurisdiction } from "./tools/findJurisdiction.js";
@@ -14,6 +15,7 @@ import { runGetSectionText } from "./tools/getSectionText.js";
 import { runSearchOrdinances } from "./tools/searchOrdinances.js";
 import { runGetProductDetails } from "./tools/getProductDetails.js";
 import { runRawGet } from "./tools/rawGet.js";
+import { runRawPost } from "./tools/rawPost.js";
 
 /**
  * Builds a fresh, fully-configured McpServer instance. See the FEMA NFHL
@@ -169,6 +171,29 @@ Returns: the real HTTP status code and full response body, whatever it is — in
       }
     },
     async (params) => runRawGet(params)
+  );
+
+  server.registerTool(
+    "municode_raw_post",
+    {
+      title: "Raw POST Against Municode Content API (diagnostic)",
+      description: `DIAGNOSTIC TOOL: makes a direct POST request with a JSON body to any path under library.municode.com/api, and returns the raw HTTP status and response body — even on error responses. Use this when municode_raw_get returns an empty-body 500, since that pattern (on this ASP.NET backend) often means the route actually expects POST with a JSON body, not GET with query params.
+
+Args:
+  - path (string): path relative to library.municode.com/api, e.g. "/search".
+  - body (object): JSON body to send, e.g. { clientId: 10739, searchText: "parking" }.
+  - response_format ('markdown' | 'json'): default 'markdown'.
+
+Returns: the real HTTP status code and full response body. Scoped only to library.municode.com/api.`,
+      inputSchema: RawPostInputSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      }
+    },
+    async (params) => runRawPost(params)
   );
 
   return server;
