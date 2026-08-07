@@ -98,3 +98,20 @@ export const GetProductDetailsInputSchema = z
   })
   .strict();
 export type GetProductDetailsInput = z.infer<typeof GetProductDetailsInputSchema>;
+
+export const RawGetInputSchema = z
+  .object({
+    path: z
+      .string()
+      .min(1)
+      .describe(
+        "Path relative to library.municode.com/api, e.g. '/search' or '/codesToc/children'. Leading slash optional."
+      ),
+    query_params: z
+      .record(z.union([z.string(), z.number(), z.boolean()]))
+      .default({})
+      .describe("Query string parameters as key-value pairs, e.g. { clientId: 10739, searchText: 'parking' }."),
+    response_format: ResponseFormatSchema
+  })
+  .strict();
+export type RawGetInput = z.infer<typeof RawGetInputSchema>;
