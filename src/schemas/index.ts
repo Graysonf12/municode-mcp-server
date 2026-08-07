@@ -115,3 +115,18 @@ export const RawGetInputSchema = z
   })
   .strict();
 export type RawGetInput = z.infer<typeof RawGetInputSchema>;
+
+export const RawPostInputSchema = z
+  .object({
+    path: z
+      .string()
+      .min(1)
+      .describe("Path relative to library.municode.com/api, e.g. '/search'. Leading slash optional."),
+    body: z
+      .record(z.unknown())
+      .default({})
+      .describe("JSON body to send, e.g. { clientId: 10739, searchText: 'parking' }."),
+    response_format: ResponseFormatSchema
+  })
+  .strict();
+export type RawPostInput = z.infer<typeof RawPostInputSchema>;
