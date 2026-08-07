@@ -202,6 +202,29 @@ export async function rawContentApiGet(
   }
 }
 
+/**
+ * Same as rawContentApiGet but POST with a JSON body — the site backend is
+ * ASP.NET (confirmed via X-Powered-By header in live DevTools captures),
+ * where sending GET to a POST-only route commonly produces exactly the
+ * failure pattern observed on /search (HTTP 500, empty body) rather than a
+ * clean 405. This tests that hypothesis directly.
+ */
+export async function rawContentApiPost(
+  path: string,
+  body: Record<string, unknown>
+): Promise<{ status: number; data: unknown }> {
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  try {
+    const response = await contentHttp.post(`${MUNICODE_CONTENT_API_BASE}${cleanPath}`, body);
+    return { status: response.status, data: response.data };
+  } catch (error) {
+    if (error instanceof AxiosError && error.response) {
+      return { status: error.response.status, data: error.response.data };
+    }
+    throw error;
+  }
+}
+
 /** Get information on a particular product a client subscribes to, by name — confirmed live (Georgetown KY) at the content API base, more precise than filtering the full ClientContent list. */
 export async function getProductByName(
   clientId: number,
