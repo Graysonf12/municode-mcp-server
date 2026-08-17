@@ -95,36 +95,84 @@ function safeStringifyErrorBody(data: unknown): string {
   }
 }
 
-/** Look up a jurisdiction ("client" in Municode's terminology) by name + state. */
-export async function getClientByName(
-  clientName: string,
-  stateAbbr: string
-): Promise<MunicodeJurisdiction> {
-  // UNVERIFIED FIX attempt 2026-08-17: switched from the unheaded `http`
-  // client to `contentHttp` (adds X-Csrf/Referer/Origin). This endpoint
-  // started returning 404 on jurisdictions previously confirmed working
-  // in earlier sessions (Palm Springs FL client 10739, Georgetown KY
-  // client 11590) — same symptom shape as the /search 500 that turned out
-  // to be a missing-header issue, not a bad param. NOT yet confirmed live;
-  // if this doesn't fix it, the header theory is wrong for this endpoint
-  // and the real cause is still open (possibly Municode deprecated/moved
-  // /Clients/name itself — worth checking library.municode.com's live
-  // network calls again if this fails).
-  const response = await contentHttp.get<MunicodeJurisdiction>(`${MUNICODE_API_BASE}/Clients/name`, {
-    params: { clientName, stateAbbr }
+/**
+ * List all jurisdictions in a state that use Municode.
+ *
+ * CONFIRMED live 2026-08-17: this endpoint works under
+ * MUNICODE_CONTENT_API_BASE (library.municode.com/api), NOT
+ * MUNICODE_API_BASE (api.municode.com) — the old base returned 404. Full
+ * FL client list confirmed returned cleanly (Alachua through at least
+ * Callaway alphabetically, real ClientIDs, in one unpaginated response).
+ */
+export async function getClientsByState(stateAbbr: string): Promise<MunicodeJurisdiction[]> {
+  const response = await contentHttp.get<MunicodeJurisdiction[]>(`${MUNICODE_CONTENT_API_BASE}/Clients/stateAbbr`, {
+    params: { stateAbbr }
   });
   return response.data;
 }
 
-/** List all jurisdictions in a state that use Municode. */
-export async function getClientsByState(stateAbbr: string): Promise<MunicodeJurisdiction[]> {
-  // Same unverified header fix as getClientByName above — applied here too
-  // for consistency since this call was never separately confirmed working
-  // and uses the identical unheaded-client pattern.
-  const response = await contentHttp.get<MunicodeJurisdiction[]>(`${MUNICODE_API_BASE}/Clients/stateAbbr`, {
-    params: { stateAbbr }
-  });
-  return response.data;
+/**
+ * Look up a jurisdiction ("client" in Municode's terminology) by name + state.
+ *
+ * REWRITTEN 2026-08-17: the old direct-lookup endpoint (`GET
+ * /Clients/name?clientName=X&stateAbbr=Y`) is confirmed DEAD — 404 on both
+ * api.municode.com and library.municode.com/api, both casings, and with
+ * the same headers that fixed /search. No working direct-lookup
+ * replacement was found by guessing (/Clients, /Clients/search all also
+ * 404). What IS confirmed working is /Clients/stateAbbr (see
+ * getClientsByState above), which returns Municode's full per-state client
+ * list in one call — the same data the old endpoint would have filtered
+ * server-side. This function now fetches that list and filters
+ * client-side instead.
+ *
+ * Matching: exact ClientName match (case-insensitive) first: this is
+ * correct for the vast majority of cases since Municode's ClientName
+ * values are typically the plain city/county name ("Palm Springs",
+ * "Alachua County"). Falls back to a substring match in either direction
+ * if no exact match, to tolerate common variations (a requester supplying
+ * "City of Palm Springs" or Municode listing "Springs, City of" — pattern
+ * unconfirmed, kept as a tolerant fallback since a strict-only match risks
+ * false "jurisdiction not found" results on real jurisdictions the old
+ * endpoint would have resolved). Throws a 404-shaped AxiosError-like
+ * object on no match at all, to keep the same error-handling contract
+ * (formatMunicodeError) the rest of the codebase already expects from
+ * this function.
+ */
+export async function getClientByName(
+  clientName: string,
+  stateAbbr: string
+): Promise<MunicodeJurisdiction> {
+  const allClients = await getClientsByState(stateAbbr);
+
+  const normalizedQuery = clientName.trim().toLowerCase();
+
+  let match = allClients.find((c) => (c.ClientName ?? "").trim().toLowerCase() === normalizedQuery);
+
+  if (!match) {
+    match = allClients.find((c) => {
+      const name = (c.ClientName ?? "").trim().toLowerCase();
+      return name.includes(normalizedQuery) || normalizedQuery.includes(name);
+    });
+  }
+
+  if (!match) {
+    // Preserve the same 404-via-AxiosError shape formatMunicodeError()
+    // already knows how to format, so callers don't need a second error
+    // path just because the lookup strategy changed underneath them.
+    const notFoundError = new AxiosError(
+      `No client matching "${clientName}" found in ${stateAbbr}'s ${allClients.length}-client Municode list.`
+    );
+    notFoundError.response = {
+      status: 404,
+      data: { message: `No client matching "${clientName}" in ${stateAbbr}` },
+      statusText: "Not Found",
+      headers: {},
+      config: notFoundError.config as never
+    };
+    throw notFoundError;
+  }
+
+  return match;
 }
 
 // Candidate wrapper field names in case ClientContent doesn't return a bare
