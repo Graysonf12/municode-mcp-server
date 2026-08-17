@@ -100,7 +100,17 @@ export async function getClientByName(
   clientName: string,
   stateAbbr: string
 ): Promise<MunicodeJurisdiction> {
-  const response = await http.get<MunicodeJurisdiction>(`${MUNICODE_API_BASE}/Clients/name`, {
+  // UNVERIFIED FIX attempt 2026-08-17: switched from the unheaded `http`
+  // client to `contentHttp` (adds X-Csrf/Referer/Origin). This endpoint
+  // started returning 404 on jurisdictions previously confirmed working
+  // in earlier sessions (Palm Springs FL client 10739, Georgetown KY
+  // client 11590) — same symptom shape as the /search 500 that turned out
+  // to be a missing-header issue, not a bad param. NOT yet confirmed live;
+  // if this doesn't fix it, the header theory is wrong for this endpoint
+  // and the real cause is still open (possibly Municode deprecated/moved
+  // /Clients/name itself — worth checking library.municode.com's live
+  // network calls again if this fails).
+  const response = await contentHttp.get<MunicodeJurisdiction>(`${MUNICODE_API_BASE}/Clients/name`, {
     params: { clientName, stateAbbr }
   });
   return response.data;
@@ -108,7 +118,10 @@ export async function getClientByName(
 
 /** List all jurisdictions in a state that use Municode. */
 export async function getClientsByState(stateAbbr: string): Promise<MunicodeJurisdiction[]> {
-  const response = await http.get<MunicodeJurisdiction[]>(`${MUNICODE_API_BASE}/Clients/stateAbbr`, {
+  // Same unverified header fix as getClientByName above — applied here too
+  // for consistency since this call was never separately confirmed working
+  // and uses the identical unheaded-client pattern.
+  const response = await contentHttp.get<MunicodeJurisdiction[]>(`${MUNICODE_API_BASE}/Clients/stateAbbr`, {
     params: { stateAbbr }
   });
   return response.data;
