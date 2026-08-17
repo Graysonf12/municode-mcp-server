@@ -280,7 +280,17 @@ export async function searchMuniDocs(
       mode: "standard",
       sort: 0,
       fragmentSize: 200,
-      contentTypeId: "",
+      // CONFIRMED live 2026-08-17: an empty string here causes Municode's
+      // backend to throw HTTP 500 with an empty body on ANY non-empty
+      // searchText (searchText="" alone returns a clean 200 with a stub
+      // empty-results schema, which is what made this look like a
+      // searchText problem at first). "CODES" is a real contentTypeId
+      // value (confirmed from ClientContent responses) and returns full,
+      // correctly-faceted results — verified against Palm Springs, FL
+      // (client 10739): "parking" returned 165 hits with real NodeIds,
+      // titles, and snippets. Do not revert to "" — it is a hard crash,
+      // not a "search all types" no-op like it looks.
+      contentTypeId: "CODES",
       stateId: 0
     }
   });
